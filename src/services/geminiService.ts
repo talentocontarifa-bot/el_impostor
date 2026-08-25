@@ -23,7 +23,78 @@ function normalizeString(str: string): string {
     .trim();
 }
 
+const GEMINI_MODELS = [
+  'gemini-1.5-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash-latest',
+  'gemini-1.5-pro'
+];
+
+async function callGeminiApi(apiKey: string, promptText: string, systemInstruction: string): Promise<string> {
+  let lastError: any = null;
+
+  for (const model of GEMINI_MODELS) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const payload = {
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: `${systemInstruction}\n\n${promptText}` }]
+          }
+        ],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.95
+        }
+      };
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const errBody = await res.text();
+        throw new Error(`Model ${model} returned HTTP ${res.status}: ${errBody}`);
+      }
+
+      const data = await res.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text && text.trim()) {
+        return text;
+      }
+    } catch (err) {
+      lastError = err;
+      console.warn(`Error trying ${model}:`, err);
+    }
+  }
+
+  throw lastError || new Error('All Gemini models failed');
+}
+
 export const geminiService = {
+  async testApiKey(key: string): Promise<{ success: boolean; message: string }> {
+    if (!key || !key.trim()) {
+      return { success: false, message: 'La clave no puede estar vacía.' };
+    }
+    try {
+      const result = await callGeminiApi(
+        key.trim(),
+        'Responde con JSON: {"status": "ok"}',
+        'Eres un evaluador del sistema.'
+      );
+      const parsed = JSON.parse(sanitizeJson(result));
+      if (parsed.status === 'ok' || result) {
+        return { success: true, message: '¡API Key válida y conectada con éxito!' };
+      }
+      return { success: false, message: 'Respuesta inesperada de Gemini.' };
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Clave inválida o error de conexión.' };
+    }
+  },
+
   async generateRound(
     difficulty: string = 'Niños',
     customCategory: string = '',
@@ -33,7 +104,7 @@ export const geminiService = {
     const apiKey = storageService.getApiKey();
 
     if (!apiKey || apiKey === 'MY_API_KEY') {
-      console.log('No Gemini API key found, using local curated bank.');
+      console.log('No API Key found, using local curated bank.');
       return {
         round: getRandomFallbackRound(difficulty, customCategory, playedWords),
         isFromAi: false
@@ -41,58 +112,48 @@ export const geminiService = {
     }
 
     const dfLevel = difficulty.toLowerCase().includes('niñ')
-      ? 'niños de 8 a 12 años, con palabras divertidas, claras y cotidianas.'
-      : 'adultos expertos y gamers. Usa conceptos intrigantes, cultura pop, cine, gastronomía, ciencia o historia.';
+      ? 'niños de 8 a 12 años, con palabras cotidianas, fáciles y divertidas.'
+      : 'adultos y gamers. Usa cultura pop, películas, tecnología, gastronomía, anime, superhéroes, etc.';
 
     const isUndercover = gameMode === 'UNDERCOVER';
 
-    const systemInstruction = `Eres el director de un juego de deducción social llamado "El Impostor", diseñado para ${dfLevel}.
-${isUndercover ? 'MODO UNDERCOVER (Palabras Similares): Debes generar DOS palabras hermanas/parecidas (ej: Café y Té, Perro y Gato, Pizza y Hamburguesa).' : 'MODO CLÁSICO: Genera una palabra secreta y un comodín para el impostor.'}
+    const systemInstruction = `Eres el director de "El Impostor", un juego de deducción social para ${dfLevel}.
+Reglas de salida:
+- Responde EXCLUSIVAMENTE con un JSON válido.
+- Formato esperado:
+{
+  "categoria": "Nombre de la Categoría",
+  "palabra_secreta": "Palabra para la tripulación",
+  ${isUndercover ? '"palabra_undercover": "Palabra similar y muy parecida para el infiltrado",' : ''}
+  "comodin": "Pista de 1 sola palabra para el impostor"
+}
 
-Reglas:
-1. La "palabra_secreta" pertenece directamente a la categoría.
-${isUndercover ? '2. La "palabra_undercover" DEBE ser del mismo tipo o categoría que "palabra_secreta", pero claramente distinta.' : '2. El "comodin" es una pista de UNA SOLA PALABRA (sin espacios) para ayudar al impostor.'}
-3. Responde ÚNICAMENTE con un objeto JSON válido con este esquema:
-{"categoria": "string", "palabra_secreta": "string", ${isUndercover ? '"palabra_undercover": "string", ' : ''}"comodin": "string"}`;
+Importante:
+${isUndercover
+  ? 'En modo Undercover, "palabra_secreta" y "palabra_undercover" DEBEN ser dos conceptos hermanos de la misma categoría que se puedan confundir fácilmente (ej: Perro y Gato, Café y Té, Spider-Man y Batman, Pizza y Hamburguesa, Oro y Plata).'
+  : 'En modo Clásico, "palabra_secreta" debe ser un elemento muy conocido de la categoría, y "comodin" debe ser una pista sutil de una sola palabra.'
+}`;
 
     const promptText = `
-${customCategory.trim() ? `Genera una ronda EXCLUSIVAMENTE para la categoría: "${customCategory}".` : 'Inventa una categoría súper divertida, aleatoria y original para esta partida.'}
-${playedWords.length > 0 ? `ESTÁ ESTRICTAMENTE PROHIBIDO usar cualquiera de estas palabras previas: ${playedWords.join(', ')}.` : ''}
+${customCategory.trim() ? `Genera una ronda de alta calidad para la categoría específica: "${customCategory.trim()}".` : 'Genera una categoría y palabras divertidas y originales.'}
+${playedWords.length > 0 ? `PROHIBIDO usar cualquiera de estas palabras previas: ${playedWords.slice(-20).join(', ')}.` : ''}
 ¡Responde solo con el JSON!`;
 
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-      
-      const payload = {
-        contents: [{ role: 'user', parts: [{ text: promptText }] }],
-        systemInstruction: { parts: [{ text: systemInstruction }] },
-        generationConfig: { responseMimeType: 'application/json', temperature: 0.95 }
-      };
-
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!res.ok) throw new Error(`Gemini API error: ${res.status}`);
-
-      const data = await res.json();
-      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!rawText) throw new Error('Empty response from Gemini');
-
+      const rawText = await callGeminiApi(apiKey, promptText, systemInstruction);
       const parsed = JSON.parse(sanitizeJson(rawText));
+
       return {
         round: {
-          categoria: customCategory.trim() || parsed.categoria,
-          palabra_secreta: parsed.palabra_secreta,
-          palabra_undercover: parsed.palabra_undercover || (isUndercover ? parsed.comodin : undefined),
+          categoria: customCategory.trim() || parsed.categoria || 'Tema Libre',
+          palabra_secreta: parsed.palabra_secreta || 'Manzana',
+          palabra_undercover: parsed.palabra_undercover || (isUndercover ? (parsed.comodin || 'Pera') : undefined),
           comodin: parsed.comodin || 'Pista'
         },
         isFromAi: true
       };
     } catch (err) {
-      console.warn('Fallo Gemini, usando banco local:', err);
+      console.warn('Gemini API call failed, falling back to local bank:', err);
       return {
         round: getRandomFallbackRound(difficulty, customCategory, playedWords),
         isFromAi: false
@@ -108,10 +169,10 @@ ${playedWords.length > 0 ? `ESTÁ ESTRICTAMENTE PROHIBIDO usar cualquiera de est
     const cleanGuess = normalizeString(guess);
     const cleanSecret = normalizeString(secretWord);
 
-    if (cleanGuess === cleanSecret || (cleanSecret.includes(cleanGuess) && cleanGuess.length >= 4)) {
+    if (cleanGuess === cleanSecret || (cleanSecret.includes(cleanGuess) && cleanGuess.length >= 3)) {
       return {
         acerto: true,
-        explicacion: `¡Exacto! "${guess}" es la palabra secreta.`,
+        explicacion: `¡Correcto! "${guess}" es la palabra secreta.`,
         palabra_ingresada: guess
       };
     }
@@ -128,37 +189,15 @@ ${playedWords.length > 0 ? `ESTÁ ESTRICTAMENTE PROHIBIDO usar cualquiera de est
       };
     }
 
-    const promptText = `
-Actúa como juez del juego "El Impostor".
-La palabra secreta real era: "${secretWord}" (Categoría: "${category}").
-El impostor acusado intentó adivinar la palabra y dijo: "${guess}".
-
-Evalúa si la respuesta del impostor es correcta, sinónimo directo, o una variación válida del concepto en español.
-Responde ÚNICAMENTE en formato JSON:
-{"acerto": true/false, "explicacion": "Explicación breve y amigable en español de 1 oración."}
-`;
+    const systemInstruction = 'Eres juez en el juego El Impostor. Responde únicamente con JSON: {"acerto": true/false, "explicacion": "frase corta en español"}';
+    const promptText = `Palabra real: "${secretWord}" (Categoría: "${category}"). El jugador dijo: "${guess}". ¿Es correcto o sinónimo válido?`;
 
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-      const payload = {
-        contents: [{ parts: [{ text: promptText }] }],
-        generationConfig: { responseMimeType: 'application/json', temperature: 0.2 }
-      };
-
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!res.ok) throw new Error('API failed');
-
-      const data = await res.json();
-      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      const rawText = await callGeminiApi(apiKey, promptText, systemInstruction);
       const parsed = JSON.parse(sanitizeJson(rawText));
       return {
         acerto: Boolean(parsed.acerto),
-        explicacion: parsed.explicacion || (parsed.acerto ? '¡Adivinanza correcta!' : `No acertó. Era "${secretWord}".`),
+        explicacion: parsed.explicacion || (parsed.acerto ? '¡Adivinanza correcta!' : `Era "${secretWord}".`),
         palabra_ingresada: guess
       };
     } catch {
