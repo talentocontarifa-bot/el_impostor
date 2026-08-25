@@ -1,0 +1,60 @@
+﻿@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --font-heading: 'Fredoka', cursive, sans-serif;
+    --font-body: 'Plus Jakarta Sans', system-ui, sans-serif;
+  }
+
+  body {
+    font-family: var(--font-body);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  h1, h2, h3, h4, .font-fun {
+    font-family: var(--font-heading);
+  }
+}
+
+/* 3D Card Flip Styles for Privacy / Reveal */
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.transform-style-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+/* Custom Pulsing & Glow effects */
+@keyframes floatBubble {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(3deg);
+  }
+}
+
+.animate-float {
+  animation: floatBubble 4s ease-in-out infinite;
+}
+
+/* Mobile Touch Active States */
+.touch-press {
+  transition: transform 0.1s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.1s ease;
+}
+
+.touch-press:active {
+  transform: scale(0.96) translateY(2px);
+}
