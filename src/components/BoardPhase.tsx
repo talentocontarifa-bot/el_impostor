@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { Mic, Play, Pause, RotateCcw, RefreshCw, ChevronRight, Vote } from 'lucide-react';
 import type { GamePlayer } from '../types/game';
 import { soundManager } from '../services/soundService';
@@ -20,18 +20,18 @@ export const BoardPhase: React.FC<BoardPhaseProps> = ({
   const [roundNumber, setRoundNumber] = useState(1);
   const [turnsInCurrentRound, setTurnsInCurrentRound] = useState(0);
 
-  // Timer Configuration & State
+  // Timer Configuration & State (Starts running automatically!)
   const initialDuration = 20;
   const [timeLeft, setTimeLeft] = useState(initialDuration);
-  const [isRunning, setIsRunning] = useState(false);
+  const [isRunning, setIsRunning] = useState(true);
   const timerRef = useRef<number | null>(null);
 
   const activePlayer = players[currentSpeakerIndex];
 
-  // Announce active speaker when turn changes
+  // Announce active speaker when turn changes & auto-start timer
   useEffect(() => {
     if (activePlayer) {
-      soundManager.speak(`Turno de ${activePlayer.name}. Di tu palabra.`);
+      soundManager.speak(`Turno de ${activePlayer.name}.`);
     }
   }, [currentSpeakerIndex]);
 
@@ -41,11 +41,10 @@ export const BoardPhase: React.FC<BoardPhaseProps> = ({
       timerRef.current = window.setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
-            // Timer expired
             if (timerRef.current) clearInterval(timerRef.current);
             setIsRunning(false);
             soundManager.playBuzzer();
-            soundManager.speak("¡Tiempo terminado!");
+            soundManager.speak("¡Tiempo!");
             return 0;
           }
           if (prev <= 4) {
@@ -81,26 +80,34 @@ export const BoardPhase: React.FC<BoardPhaseProps> = ({
       setTurnsInCurrentRound(0);
     }
 
-    // Reset timer for next player
+    // Auto-restart timer immediately for next speaker
     setTimeLeft(initialDuration);
-    setIsRunning(false);
+    setIsRunning(true);
+  };
+
+  const handleSelectSpeaker = (idx: number) => {
+    soundManager.playPop();
+    setCurrentSpeakerIndex(idx);
+    setTimeLeft(initialDuration);
+    setIsRunning(true);
   };
 
   const handleTogglePlay = () => {
     soundManager.playPop();
     if (timeLeft === 0) {
       setTimeLeft(initialDuration);
+      setIsRunning(true);
+    } else {
+      setIsRunning(!isRunning);
     }
-    setIsRunning(!isRunning);
   };
 
   const handleResetTimer = () => {
     soundManager.playPop();
-    setIsRunning(false);
     setTimeLeft(initialDuration);
+    setIsRunning(true);
   };
 
-  // Timer visual percentage
   const progressPercent = ((initialDuration - timeLeft) / initialDuration) * 100;
   const strokeDashoffset = 100 - progressPercent;
 
@@ -126,7 +133,7 @@ export const BoardPhase: React.FC<BoardPhaseProps> = ({
         </div>
       </div>
 
-      {/* Main Table Center Piece with Integrated Timer */}
+      {/* Main Table Center Piece with Auto-Starting Animated Timer */}
       <div className="relative bg-gradient-to-br from-indigo-900 via-indigo-950 to-slate-950 rounded-3xl p-6 sm:p-8 text-white shadow-2xl border-4 border-indigo-500/40 flex flex-col items-center justify-between text-center overflow-hidden min-h-[360px]">
         <div className="absolute -top-16 -left-16 w-44 h-44 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-16 -right-16 w-44 h-44 bg-amber-500/15 rounded-full blur-3xl pointer-events-none" />
@@ -137,11 +144,11 @@ export const BoardPhase: React.FC<BoardPhaseProps> = ({
           <span>Celular al centro de la mesa</span>
         </div>
 
-        {/* Active Speaker with Circular Countdown Ring */}
+        {/* Active Speaker with SVG Circular Countdown Ring */}
         <div className="flex flex-col items-center my-auto py-2">
           <div className="relative flex items-center justify-center">
             
-            {/* SVG Circular Progress Ring */}
+            {/* Circular Progress Ring */}
             <svg className="w-36 h-36 -rotate-90">
               <circle
                 cx="72"
@@ -168,7 +175,7 @@ export const BoardPhase: React.FC<BoardPhaseProps> = ({
               />
             </svg>
 
-            {/* Speaker Avatar inside Ring */}
+            {/* Speaker Avatar */}
             <div className="absolute w-24 h-24 rounded-3xl bg-gradient-to-tr from-indigo-500 to-indigo-400 border-4 border-white text-5xl flex items-center justify-center shadow-xl shadow-indigo-500/40">
               {AVATAR_EMOJIS[activePlayer?.avatarIndex % AVATAR_EMOJIS.length]}
             </div>
@@ -191,14 +198,14 @@ export const BoardPhase: React.FC<BoardPhaseProps> = ({
           </p>
         </div>
 
-        {/* Timer Control Bar */}
+        {/* Timer Controls Bar */}
         <div className="flex items-center gap-2 pt-2 bg-white/10 px-4 py-2 rounded-2xl border border-white/15 backdrop-blur-md">
           <button
             onClick={handleTogglePlay}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 touch-press transition-all ${
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 touch-press transition-all ${
               isRunning
                 ? 'bg-amber-400 text-slate-900 shadow-md'
-                : 'bg-white/20 hover:bg-white/30 text-white'
+                : 'bg-emerald-500 text-white shadow-md'
             }`}
           >
             {isRunning ? (
@@ -209,7 +216,7 @@ export const BoardPhase: React.FC<BoardPhaseProps> = ({
             ) : (
               <>
                 <Play className="w-3.5 h-3.5 fill-current" />
-                <span>{timeLeft === 0 ? 'Reiniciar' : 'Iniciar'}</span>
+                <span>Reanudar</span>
               </>
             )}
           </button>
@@ -230,7 +237,7 @@ export const BoardPhase: React.FC<BoardPhaseProps> = ({
         </div>
       </div>
 
-      {/* Players Progress Sequence */}
+      {/* Players Progress Bar */}
       <div className="bg-white dark:bg-slate-900 rounded-3xl p-3 sm:p-4 border-2 border-amber-200/80 dark:border-slate-800 shadow-md shadow-amber-900/5 dark:shadow-none flex items-center gap-2 overflow-x-auto transition-colors">
         {players.map((p, idx) => {
           const isCurrent = idx === currentSpeakerIndex;
@@ -239,12 +246,7 @@ export const BoardPhase: React.FC<BoardPhaseProps> = ({
           return (
             <div
               key={p.id}
-              onClick={() => {
-                setCurrentSpeakerIndex(idx);
-                setTimeLeft(initialDuration);
-                setIsRunning(false);
-                soundManager.playPop();
-              }}
+              onClick={() => handleSelectSpeaker(idx)}
               className={`flex-1 min-w-[70px] py-2 px-2 rounded-2xl flex flex-col items-center gap-1 cursor-pointer transition-all border ${
                 isCurrent
                   ? 'bg-indigo-600 text-white border-indigo-600 shadow-md scale-105'
@@ -264,13 +266,13 @@ export const BoardPhase: React.FC<BoardPhaseProps> = ({
         })}
       </div>
 
-      {/* Control Actions */}
+      {/* Actions */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
         <button
           onClick={handleNextSpeaker}
           className="w-full py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-fun font-bold text-base shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2 touch-press transition-all border-2 border-indigo-400/30"
         >
-          <span>Siguiente Jugador</span>
+          <span>Siguiente Jugador (20s)</span>
           <ChevronRight className="w-5 h-5" />
         </button>
 

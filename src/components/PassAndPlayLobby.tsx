@@ -1,5 +1,5 @@
 ﻿import React, { useState } from 'react';
-import { Eye, Sparkles, Edit2, Play, Users } from 'lucide-react';
+import { Eye, Sparkles, Edit2, Play, Users, Check } from 'lucide-react';
 import type { GamePlayer } from '../types/game';
 import { soundManager } from '../services/soundService';
 
@@ -72,7 +72,7 @@ export const PassAndPlayLobby: React.FC<PassAndPlayLobbyProps> = ({
         </div>
 
         <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed font-medium bg-amber-50/70 dark:bg-slate-800/80 p-3 rounded-2xl border border-amber-200/60 dark:border-slate-700">
-          📱 <strong>Regla de oro:</strong> Cada jugador debe tomar el dispositivo por turno, ver su palabra o comodín en secreto, y pasarle el celular al siguiente.
+          📱 <strong>Regla de oro:</strong> Cada jugador toma el celular en privado, revisa su rol y luego se lo entrega al siguiente jugador.
         </p>
 
         {/* Players Grid / List */}
@@ -86,36 +86,37 @@ export const PassAndPlayLobby: React.FC<PassAndPlayLobbyProps> = ({
                 key={player.id}
                 className="flex items-center justify-between p-3 sm:p-3.5 rounded-2xl bg-amber-50/40 dark:bg-slate-800/50 border border-amber-200/70 dark:border-slate-700/80 hover:bg-white dark:hover:bg-slate-800 hover:border-indigo-200 dark:hover:border-indigo-500 transition-all"
               >
-                <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="flex items-center gap-3 flex-1 min-w-0 mr-2">
                   <div className="w-10 h-10 rounded-xl bg-indigo-100/80 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 text-xl flex items-center justify-center shrink-0">
                     {emoji}
                   </div>
 
                   {isEditing ? (
-                    <div className="flex items-center gap-2 flex-1 mr-2">
+                    <div className="flex items-center gap-2 flex-1">
                       <input
                         type="text"
                         value={tempName}
                         onChange={(e) => setTempName(e.target.value)}
+                        onBlur={() => saveEditing(idx)}
                         onKeyDown={(e) => e.key === 'Enter' && saveEditing(idx)}
                         autoFocus
-                        className="w-full px-2.5 py-1 text-sm font-bold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-700 border border-indigo-300 dark:border-indigo-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full px-2.5 py-1 text-sm font-bold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-700 border-2 border-indigo-500 rounded-lg focus:outline-none"
                       />
                       <button
-                        onClick={() => saveEditing(idx)}
-                        className="text-xs font-bold px-2.5 py-1 bg-indigo-600 text-white rounded-lg touch-press"
+                        onMouseDown={(e) => { e.preventDefault(); saveEditing(idx); }}
+                        className="text-xs font-bold p-1.5 bg-indigo-600 text-white rounded-lg touch-press"
                       >
-                        OK
+                        <Check className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2 truncate">
+                    <div className="flex items-center gap-2 truncate flex-1">
                       <span className="font-bold text-slate-800 dark:text-slate-100 text-sm sm:text-base truncate">
                         {player.name}
                       </span>
                       <button
                         onClick={() => startEditing(idx, player.name)}
-                        className="text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 p-1 transition-colors"
+                        className="text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 p-1 transition-colors shrink-0"
                         title="Cambiar Nombre"
                       >
                         <Edit2 className="w-3.5 h-3.5" />

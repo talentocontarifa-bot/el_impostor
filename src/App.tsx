@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import type { GamePhase, GamePlayer, ValidationResponse, GameHistoryItem, GameMode, PlayerRole } from './types/game';
 import { geminiService } from './services/geminiService';
 import { soundManager } from './services/soundService';
@@ -172,7 +172,7 @@ export function App() {
       setIsFromAi(result.isFromAi);
       setPlayedWords((prev) => [...prev, sec]);
 
-      const newPlayers = createPlayerRoster(sec, und);
+      const newPlayers = createPlayerRoster(sec, und, players.length === numPlayers ? players : undefined);
       setPlayers(newPlayers);
       setCurrentPhase('PASS_AND_PLAY_LOBBY');
       soundManager.playVictory();
