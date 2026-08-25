@@ -4,13 +4,16 @@ import { storageService } from './storageService';
 
 function sanitizeJson(raw: string): string {
   let str = raw.trim();
-  if (str.startsWith('```json')) {
-    str = str.replace(/^```json/, '');
-  } else if (str.startsWith('```')) {
-    str = str.replace(/^```/, '');
+  // Extract content inside ```json ... ``` or ``` ... ```
+  const jsonMatch = str.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (jsonMatch && jsonMatch[1]) {
+    str = jsonMatch[1].trim();
   }
-  if (str.endsWith('```')) {
-    str = str.replace(/```$/, '');
+  // If still contains outer braces, grab substring between first { and last }
+  const firstBrace = str.indexOf('{');
+  const lastBrace = str.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    str = str.substring(firstBrace, lastBrace + 1);
   }
   return str.trim();
 }
@@ -23,19 +26,21 @@ function normalizeString(str: string): string {
     .trim();
 }
 
-const GEMINI_MODELS = [
-  'gemini-1.5-flash',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash-latest',
-  'gemini-1.5-pro'
+const ENDPOINTS_TO_TRY = [
+  { apiVersion: 'v1beta', model: 'gemini-2.0-flash' },
+  { apiVersion: 'v1beta', model: 'gemini-1.5-flash-latest' },
+  { apiVersion: 'v1beta', model: 'gemini-1.5-flash' },
+  { apiVersion: 'v1', model: 'gemini-1.5-flash' },
+  { apiVersion: 'v1beta', model: 'gemini-1.5-flash-8b' }
 ];
 
 async function callGeminiApi(apiKey: string, promptText: string, systemInstruction: string): Promise<string> {
-  let lastError: any = null;
+  let lastErrorMsg = '';
 
-  for (const model of GEMINI_MODELS) {
+  for (const { apiVersion, model } of ENDPOINTS_TO_TRY) {
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${apiKey.trim()}`;
+      
       const payload = {
         contents: [
           {
@@ -44,8 +49,7 @@ async function callGeminiApi(apiKey: string, promptText: string, systemInstructi
           }
         ],
         generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.95
+          temperature: 0.9
         }
       };
 
@@ -56,8 +60,10 @@ async function callGeminiApi(apiKey: string, promptText: string, systemInstructi
       });
 
       if (!res.ok) {
-        const errBody = await res.text();
-        throw new Error(`Model ${model} returned HTTP ${res.status}: ${errBody}`);
+        const errText = await res.text();
+        lastErrorMsg = `HTTP ${res.status} (${model}): ${errText}`;
+        console.warn(`Attempt failed for ${model}:`, lastErrorMsg);
+        continue;
       }
 
       const data = await res.json();
@@ -65,13 +71,13 @@ async function callGeminiApi(apiKey: string, promptText: string, systemInstructi
       if (text && text.trim()) {
         return text;
       }
-    } catch (err) {
-      lastError = err;
-      console.warn(`Error trying ${model}:`, err);
+    } catch (err: any) {
+      lastErrorMsg = err.message || 'Error de red';
+      console.warn(`Fetch error for ${model}:`, err);
     }
   }
 
-  throw lastError || new Error('All Gemini models failed');
+  throw new Error(lastErrorMsg || 'No se pudo conectar con ningún modelo de Gemini.');
 }
 
 export const geminiService = {
@@ -82,16 +88,15 @@ export const geminiService = {
     try {
       const result = await callGeminiApi(
         key.trim(),
-        'Responde con JSON: {"status": "ok"}',
-        'Eres un evaluador del sistema.'
+        'Responde exactamente con: {"status": "ok"}',
+        'Eres un evaluador de conexión. Responde solo con JSON.'
       );
-      const parsed = JSON.parse(sanitizeJson(result));
-      if (parsed.status === 'ok' || result) {
-        return { success: true, message: '¡API Key válida y conectada con éxito!' };
+      if (result && result.includes('status')) {
+        return { success: true, message: '¡API Key válida y conectada con éxito! 🎉' };
       }
-      return { success: false, message: 'Respuesta inesperada de Gemini.' };
+      return { success: true, message: '¡Conexión exitosa con Gemini AI! 🚀' };
     } catch (err: any) {
-      return { success: false, message: err.message || 'Clave inválida o error de conexión.' };
+      return { success: false, message: `Error de API: ${err.message}` };
     }
   },
 
@@ -104,7 +109,6 @@ export const geminiService = {
     const apiKey = storageService.getApiKey();
 
     if (!apiKey || apiKey === 'MY_API_KEY') {
-      console.log('No API Key found, using local curated bank.');
       return {
         round: getRandomFallbackRound(difficulty, customCategory, playedWords),
         isFromAi: false
@@ -112,31 +116,26 @@ export const geminiService = {
     }
 
     const dfLevel = difficulty.toLowerCase().includes('niñ')
-      ? 'niños de 8 a 12 años, con palabras cotidianas, fáciles y divertidas.'
-      : 'adultos y gamers. Usa cultura pop, películas, tecnología, gastronomía, anime, superhéroes, etc.';
+      ? 'niños de 8 a 12 años, con conceptos conocidos, divertidos y cotidianos.'
+      : 'adultos y gamers. Puedes usar cultura pop, cine, personajes históricos o bíblicos, gastronomía, ciencia, etc.';
 
     const isUndercover = gameMode === 'UNDERCOVER';
 
-    const systemInstruction = `Eres el director de "El Impostor", un juego de deducción social para ${dfLevel}.
-Reglas de salida:
-- Responde EXCLUSIVAMENTE con un JSON válido.
-- Formato esperado:
+    const systemInstruction = `Eres el director del juego de deducción social "El Impostor". Diseñado para ${dfLevel}.
+Reglas estrictas de respuesta:
+1. Responde ÚNICAMENTE con un bloque JSON sin texto adicional.
+2. Estructura requerida:
 {
-  "categoria": "Nombre de la Categoría",
-  "palabra_secreta": "Palabra para la tripulación",
-  ${isUndercover ? '"palabra_undercover": "Palabra similar y muy parecida para el infiltrado",' : ''}
+  "categoria": "Nombre claro de la categoría",
+  "palabra_secreta": "Palabra para los tripulantes",
+  ${isUndercover ? '"palabra_undercover": "Palabra hermana MUY parecida de la misma categoría",' : ''}
   "comodin": "Pista de 1 sola palabra para el impostor"
 }
-
-Importante:
-${isUndercover
-  ? 'En modo Undercover, "palabra_secreta" y "palabra_undercover" DEBEN ser dos conceptos hermanos de la misma categoría que se puedan confundir fácilmente (ej: Perro y Gato, Café y Té, Spider-Man y Batman, Pizza y Hamburguesa, Oro y Plata).'
-  : 'En modo Clásico, "palabra_secreta" debe ser un elemento muy conocido de la categoría, y "comodin" debe ser una pista sutil de una sola palabra.'
-}`;
+${isUndercover ? 'IMPORTANTE UNDERCOVER: "palabra_secreta" y "palabra_undercover" DEBEN pertenecer exactamente a la misma categoría y ser fáciles de confundir (ej: Moisés y Noé, Batman y Spider-Man, Café y Té, Pizza y Hamburguesa).' : 'En modo Clásico, "palabra_secreta" debe ser un elemento muy representativo de la categoría y "comodin" una pista sutil.'}`;
 
     const promptText = `
-${customCategory.trim() ? `Genera una ronda de alta calidad para la categoría específica: "${customCategory.trim()}".` : 'Genera una categoría y palabras divertidas y originales.'}
-${playedWords.length > 0 ? `PROHIBIDO usar cualquiera de estas palabras previas: ${playedWords.slice(-20).join(', ')}.` : ''}
+${customCategory.trim() ? `Genera una ronda EXCLUSIVAMENTE para la categoría: "${customCategory.trim()}".` : 'Genera una categoría súper original y divertida para esta partida.'}
+${playedWords.length > 0 ? `Palabras previas prohibidas: ${playedWords.slice(-15).join(', ')}.` : ''}
 ¡Responde solo con el JSON!`;
 
     try {
@@ -145,15 +144,15 @@ ${playedWords.length > 0 ? `PROHIBIDO usar cualquiera de estas palabras previas:
 
       return {
         round: {
-          categoria: customCategory.trim() || parsed.categoria || 'Tema Libre',
-          palabra_secreta: parsed.palabra_secreta || 'Manzana',
-          palabra_undercover: parsed.palabra_undercover || (isUndercover ? (parsed.comodin || 'Pera') : undefined),
+          categoria: customCategory.trim() || parsed.categoria || 'Categoría Secreta',
+          palabra_secreta: parsed.palabra_secreta || 'Moisés',
+          palabra_undercover: parsed.palabra_undercover || (isUndercover ? (parsed.comodin || 'Noé') : undefined),
           comodin: parsed.comodin || 'Pista'
         },
         isFromAi: true
       };
     } catch (err) {
-      console.warn('Gemini API call failed, falling back to local bank:', err);
+      console.warn('Gemini API fallo, usando banco local:', err);
       return {
         round: getRandomFallbackRound(difficulty, customCategory, playedWords),
         isFromAi: false
@@ -172,7 +171,7 @@ ${playedWords.length > 0 ? `PROHIBIDO usar cualquiera de estas palabras previas:
     if (cleanGuess === cleanSecret || (cleanSecret.includes(cleanGuess) && cleanGuess.length >= 3)) {
       return {
         acerto: true,
-        explicacion: `¡Correcto! "${guess}" es la palabra secreta.`,
+        explicacion: `¡Exacto! "${guess}" es la palabra secreta.`,
         palabra_ingresada: guess
       };
     }
@@ -190,7 +189,7 @@ ${playedWords.length > 0 ? `PROHIBIDO usar cualquiera de estas palabras previas:
     }
 
     const systemInstruction = 'Eres juez en el juego El Impostor. Responde únicamente con JSON: {"acerto": true/false, "explicacion": "frase corta en español"}';
-    const promptText = `Palabra real: "${secretWord}" (Categoría: "${category}"). El jugador dijo: "${guess}". ¿Es correcto o sinónimo válido?`;
+    const promptText = `Palabra secreta real: "${secretWord}" (Categoría: "${category}"). El jugador dijo: "${guess}". ¿Es correcto o sinónimo válido?`;
 
     try {
       const rawText = await callGeminiApi(apiKey, promptText, systemInstruction);
