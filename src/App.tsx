@@ -441,6 +441,8 @@ export function App() {
             onStartGame={handleStartGame}
             isLoading={isLoading}
             errorMessage={errorMessage}
+            apiKeySet={Boolean(apiKey)}
+            onOpenApiKey={() => setIsApiKeyModalOpen(true)}
           />
         )}
 

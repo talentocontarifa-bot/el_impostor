@@ -19,6 +19,8 @@ interface SetupPhaseProps {
   onStartGame: () => void;
   isLoading: boolean;
   errorMessage: string | null;
+  apiKeySet: boolean;
+  onOpenApiKey: () => void;
 }
 
 const CATEGORY_PRESETS = [
@@ -47,7 +49,9 @@ export const SetupPhase: React.FC<SetupPhaseProps> = ({
   setTournamentRounds,
   onStartGame,
   isLoading,
-  errorMessage
+  errorMessage,
+  apiKeySet,
+  onOpenApiKey
 }) => {
   const handlePlayerChange = (delta: number) => {
     const next = Math.min(10, Math.max(3, numPlayers + delta));
@@ -72,9 +76,24 @@ export const SetupPhase: React.FC<SetupPhaseProps> = ({
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 text-white p-5 sm:p-6 shadow-xl shadow-indigo-600/15 border-2 border-indigo-400/30">
         <div className="relative z-10 flex items-center justify-between gap-4">
           <div className="flex-1">
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase bg-amber-400/20 text-amber-300 border border-amber-300/30 mb-2">
-              <Sparkles className="w-3 h-3 text-amber-300" /> ¡Edición Pro Party!
-            </span>
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide uppercase bg-amber-400/20 text-amber-300 border border-amber-300/30">
+                <Sparkles className="w-3 h-3 text-amber-300" /> ¡Edición Pro Party!
+              </span>
+
+              <button
+                type="button"
+                onClick={onOpenApiKey}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border transition-colors touch-press ${
+                  apiKeySet
+                    ? 'bg-emerald-400/20 text-emerald-200 border-emerald-300/40 hover:bg-emerald-400/30'
+                    : 'bg-amber-500/30 text-amber-200 border-amber-400/50 hover:bg-amber-500/40'
+                }`}
+              >
+                <span className={`w-2 h-2 rounded-full ${apiKeySet ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                <span>{apiKeySet ? 'IA Gemini Conectada' : 'Modo Offline · Conectar IA 🔑'}</span>
+              </button>
+            </div>
             <h2 className="text-2xl sm:text-3xl font-fun font-bold text-white leading-tight">
               ¿Quién es el Impostor?
             </h2>
