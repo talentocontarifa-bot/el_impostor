@@ -1,7 +1,8 @@
-﻿import React from 'react';
+import React from 'react';
 import { Smartphone, Lock, ArrowRight, ShieldCheck } from 'lucide-react';
 import type { GamePlayer } from '../types/game';
 import { soundManager } from '../services/soundService';
+import { AVATAR_EMOJIS } from '../constants/avatars';
 
 interface HandoffScreenProps {
   targetPlayer: GamePlayer;
@@ -11,7 +12,6 @@ interface HandoffScreenProps {
   onConfirmReady: () => void;
 }
 
-const AVATAR_EMOJIS = ['👨‍🚀', '🕵️‍♀️', '🧙‍♂️', '🦸‍♂️', '🥷', '🤖', '🦊', '🐼', '🦁', '🦉'];
 
 export const HandoffScreen: React.FC<HandoffScreenProps> = ({
   targetPlayer,

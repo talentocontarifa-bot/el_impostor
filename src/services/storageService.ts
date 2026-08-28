@@ -1,10 +1,11 @@
-﻿import type { GameHistoryItem } from '../types/game';
+import type { GameHistoryItem } from '../types/game';
 
 const STORAGE_KEYS = {
   API_KEY: 'el_impostor_gemini_api_key',
   HISTORY: 'el_impostor_game_history',
   SETTINGS: 'el_impostor_game_settings',
   LAST_PLAYERS: 'el_impostor_last_players',
+  SAVED_CREW: 'el_impostor_saved_crew',
   THEME: 'el_impostor_theme_mode'
 };
 
@@ -64,6 +65,7 @@ export const storageService = {
     localStorage.removeItem(STORAGE_KEYS.HISTORY);
   },
 
+  // Last session player names (auto-saved after each name change)
   getLastPlayerNames(): string[] {
     if (typeof window === 'undefined') return [];
     try {
@@ -81,5 +83,30 @@ export const storageService = {
     } catch {
       // Ignore
     }
+  },
+
+  // Explicitly saved crew (user pressed "Guardar Tripulación")
+  getSavedCrew(): string[] {
+    if (typeof window === 'undefined') return [];
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.SAVED_CREW);
+      return data ? JSON.parse(data) : [];
+    } catch {
+      return [];
+    }
+  },
+
+  saveCrew(names: string[]): void {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(STORAGE_KEYS.SAVED_CREW, JSON.stringify(names.filter(n => n.trim())));
+    } catch {
+      // Ignore
+    }
+  },
+
+  hasSavedCrew(): boolean {
+    const crew = this.getSavedCrew();
+    return crew.length >= 2;
   }
 };

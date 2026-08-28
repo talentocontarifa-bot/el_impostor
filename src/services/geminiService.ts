@@ -1,4 +1,4 @@
-﻿import type { GameRoundResponse, ValidationResponse, GameMode } from '../types/game';
+import type { GameRoundResponse, ValidationResponse, GameMode } from '../types/game';
 import { getRandomFallbackRound } from '../data/defaultRounds';
 import { storageService } from './storageService';
 
@@ -21,8 +21,8 @@ function sanitizeJson(raw: string): string {
 function normalizeString(str: string): string {
   return str
     .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .trim();
 }
 
@@ -34,29 +34,48 @@ const ENDPOINTS_TO_TRY = [
   { apiVersion: 'v1beta', model: 'gemini-1.5-flash-8b' }
 ];
 
-async function callGeminiApi(apiKey: string, promptText: string, systemInstruction: string): Promise<string> {
+// Module-level AbortController so we can cancel in-flight requests
+let currentAbortController: AbortController | null = null;
+
+async function callGeminiApi(
+  apiKey: string,
+  promptText: string,
+  systemInstruction: string,
+  signal?: AbortSignal
+): Promise<string> {
   let lastErrorMsg = '';
 
   for (const { apiVersion, model } of ENDPOINTS_TO_TRY) {
+    if (signal?.aborted) throw new Error('Petición cancelada');
+
     try {
-      const url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${apiKey.trim()}`;
-      
-      const payload = {
+      const url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent`;
+
+      // Build payload with proper system_instruction separation
+      const payload: Record<string, unknown> = {
+        system_instruction: {
+          parts: [{ text: systemInstruction }]
+        },
         contents: [
           {
             role: 'user',
-            parts: [{ text: `${systemInstruction}\n\n${promptText}` }]
+            parts: [{ text: promptText }]
           }
         ],
         generationConfig: {
-          temperature: 0.9
+          temperature: 0.8
         }
       };
 
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        headers: {
+          'Content-Type': 'application/json',
+          // API key in header — NOT in query string to avoid logs/referrer leaks
+          'x-goog-api-key': apiKey.trim()
+        },
+        body: JSON.stringify(payload),
+        signal
       });
 
       if (!res.ok) {
@@ -71,8 +90,9 @@ async function callGeminiApi(apiKey: string, promptText: string, systemInstructi
       if (text && text.trim()) {
         return text;
       }
-    } catch (err: any) {
-      lastErrorMsg = err.message || 'Error de red';
+    } catch (err: unknown) {
+      if ((err as Error)?.name === 'AbortError') throw err;
+      lastErrorMsg = (err as Error)?.message || 'Error de red';
       console.warn(`Fetch error for ${model}:`, err);
     }
   }
@@ -95,8 +115,8 @@ export const geminiService = {
         return { success: true, message: '¡API Key válida y conectada con éxito! 🎉' };
       }
       return { success: true, message: '¡Conexión exitosa con Gemini AI! 🚀' };
-    } catch (err: any) {
-      return { success: false, message: `Error de API: ${err.message}` };
+    } catch (err: unknown) {
+      return { success: false, message: `Error de API: ${(err as Error)?.message}` };
     }
   },
 
@@ -115,44 +135,68 @@ export const geminiService = {
       };
     }
 
+    // Cancel any previous in-flight request
+    if (currentAbortController) {
+      currentAbortController.abort();
+    }
+    currentAbortController = new AbortController();
+    const signal = currentAbortController.signal;
+
     const dfLevel = difficulty.toLowerCase().includes('niñ')
-      ? 'niños de 8 a 12 años, con conceptos conocidos, divertidos y cotidianos.'
+      ? 'niños de 8 a 12 años, con conceptos conocidos, divertidos y cotidianos'
       : 'adultos y gamers. Puedes usar cultura pop, cine, personajes históricos o bíblicos, gastronomía, ciencia, etc.';
 
     const isUndercover = gameMode === 'UNDERCOVER';
+    const targetCategory = customCategory.trim();
 
-    const systemInstruction = `Eres el director del juego de deducción social "El Impostor". Diseñado para ${dfLevel}.
-Reglas estrictas de respuesta:
-1. Responde ÚNICAMENTE con un bloque JSON sin texto adicional.
-2. Estructura requerida:
+    const systemInstruction = `Eres el director del juego de deducción social "El Impostor", diseñado para ${dfLevel}.
+REGLAS DE RESPUESTA ESTRICTAS:
+1. Responde ÚNICAMENTE con JSON puro, sin texto adicional, sin markdown, sin explicaciones.
+2. Estructura exacta requerida:
 {
-  "categoria": "Nombre claro de la categoría",
-  "palabra_secreta": "Palabra para los tripulantes",
-  ${isUndercover ? '"palabra_undercover": "Palabra hermana MUY parecida de la misma categoría",' : ''}
-  "comodin": "Pista de 1 sola palabra para el impostor"
+  "categoria": "${targetCategory || 'Nombre claro de la categoría generada'}",
+  "palabra_secreta": "Palabra o personaje representativo de esa categoría",
+  ${isUndercover ? '"palabra_undercover": "Palabra hermana muy parecida de la MISMA categoría",' : ''}
+  "comodin": "Una sola palabra pista sutil para el impostor"
 }
-${isUndercover ? 'IMPORTANTE UNDERCOVER: "palabra_secreta" y "palabra_undercover" DEBEN pertenecer exactamente a la misma categoría y ser fáciles de confundir (ej: Moisés y Noé, Batman y Spider-Man, Café y Té, Pizza y Hamburguesa).' : 'En modo Clásico, "palabra_secreta" debe ser un elemento muy representativo de la categoría y "comodin" una pista sutil.'}`;
+${targetCategory ? `OBLIGATORIO: La categoría en el JSON DEBE ser exactamente "${targetCategory}" y tanto "palabra_secreta" como "comodin" DEBEN pertenecer a esa categoría.` : ''}
+${isUndercover ? `UNDERCOVER: "palabra_secreta" y "palabra_undercover" DEBEN ser de la misma categoría y fáciles de confundir (ej: Moisés/Noé, Batman/Spider-Man, Café/Té, Pizza/Hamburguesa).` : ''}`;
 
-    const promptText = `
-${customCategory.trim() ? `Genera una ronda EXCLUSIVAMENTE para la categoría: "${customCategory.trim()}".` : 'Genera una categoría súper original y divertida para esta partida.'}
-${playedWords.length > 0 ? `Palabras previas prohibidas: ${playedWords.slice(-15).join(', ')}.` : ''}
-¡Responde solo con el JSON!`;
+    const promptText = `${targetCategory ? `Genera una ronda para la categoría EXACTA: "${targetCategory}".` : 'Genera una categoría original y divertida para esta partida.'}
+${playedWords.length > 0 ? `Palabras YA USADAS (no repetir): ${playedWords.slice(-15).join(', ')}.` : ''}
+Responde solo con el JSON.`;
 
     try {
-      const rawText = await callGeminiApi(apiKey, promptText, systemInstruction);
+      const rawText = await callGeminiApi(apiKey, promptText, systemInstruction, signal);
       const parsed = JSON.parse(sanitizeJson(rawText));
+
+      // Validate: if a specific category was requested, ensure the response honors it
+      const returnedCategory = parsed.categoria || '';
+      const resolvedCategory = targetCategory
+        ? targetCategory  // Always trust the user-requested category
+        : (returnedCategory || 'Categoría Secreta');
+
+      const secretWord = parsed.palabra_secreta;
+      if (!secretWord || typeof secretWord !== 'string' || secretWord.trim() === '') {
+        throw new Error('Respuesta de IA sin palabra_secreta válida, usando banco local.');
+      }
 
       return {
         round: {
-          categoria: customCategory.trim() || parsed.categoria || 'Categoría Secreta',
-          palabra_secreta: parsed.palabra_secreta || 'Moisés',
-          palabra_undercover: parsed.palabra_undercover || (isUndercover ? (parsed.comodin || 'Noé') : undefined),
-          comodin: parsed.comodin || 'Pista'
+          categoria: resolvedCategory,
+          palabra_secreta: secretWord.trim(),
+          palabra_undercover: isUndercover
+            ? (parsed.palabra_undercover?.trim() || parsed.comodin?.trim() || 'Noé')
+            : undefined,
+          comodin: (parsed.comodin || 'Pista').trim()
         },
         isFromAi: true
       };
-    } catch (err) {
-      console.warn('Gemini API fallo, usando banco local:', err);
+    } catch (err: unknown) {
+      if ((err as Error)?.name === 'AbortError') {
+        throw err; // bubble up cancellation
+      }
+      console.warn('Gemini API falló, usando banco local:', err);
       return {
         round: getRandomFallbackRound(difficulty, customCategory, playedWords),
         isFromAi: false
@@ -188,7 +232,7 @@ ${playedWords.length > 0 ? `Palabras previas prohibidas: ${playedWords.slice(-15
       };
     }
 
-    const systemInstruction = 'Eres juez en el juego El Impostor. Responde únicamente con JSON: {"acerto": true/false, "explicacion": "frase corta en español"}';
+    const systemInstruction = 'Eres juez en el juego El Impostor. Responde únicamente con JSON válido: {"acerto": true o false, "explicacion": "frase corta en español"}. Sin texto adicional.';
     const promptText = `Palabra secreta real: "${secretWord}" (Categoría: "${category}"). El jugador dijo: "${guess}". ¿Es correcto o sinónimo válido?`;
 
     try {

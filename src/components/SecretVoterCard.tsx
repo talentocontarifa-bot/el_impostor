@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Check, Shield } from 'lucide-react';
 import type { GamePlayer } from '../types/game';
 import { soundManager } from '../services/soundService';
+import { AVATAR_EMOJIS } from '../constants/avatars';
 
 interface SecretVoterCardProps {
   voter: GamePlayer;
@@ -12,7 +13,6 @@ interface SecretVoterCardProps {
   totalVoters: number;
 }
 
-const AVATAR_EMOJIS = ['👨‍🚀', '🕵️‍♀️', '🧙‍♂️', '🦸‍♂️', '🥷', '🤖', '🦊', '🐼', '🦁', '🦉'];
 
 export const SecretVoterCard: React.FC<SecretVoterCardProps> = ({
   voter,

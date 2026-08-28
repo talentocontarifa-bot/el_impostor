@@ -1,8 +1,9 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import { RotateCcw, Play, Trophy, Sparkles } from 'lucide-react';
 import type { GamePlayer } from '../types/game';
 import { soundManager } from '../services/soundService';
+import { AVATAR_EMOJIS } from '../constants/avatars';
 
 interface GameOverPhaseProps {
   winnerTeam: 'IMPOSTOR' | 'TRIPULANTES' | 'BROMISTA';
@@ -20,8 +21,6 @@ interface GameOverPhaseProps {
   onNewGameSetup: () => void;
 }
 
-const AVATAR_EMOJIS = ['👨‍🚀', '🕵️‍♀️', '🧙‍♂️', '🦸‍♂️', '🥷', '🤖', '🦊', '🐼', '🦁', '🦉'];
-
 export const GameOverPhase: React.FC<GameOverPhaseProps> = ({
   winnerTeam,
   impostorPlayer,
@@ -38,12 +37,15 @@ export const GameOverPhase: React.FC<GameOverPhaseProps> = ({
   onNewGameSetup
 }) => {
   const isTournamentOver = currentTournamentRound >= totalTournamentRounds;
+  // Capture winnerTeam at mount time to avoid re-firing on re-renders
+  const capturedWinner = useRef(winnerTeam);
 
   useEffect(() => {
+    const winner = capturedWinner.current;
     soundManager.playVictory();
-    if (winnerTeam === 'BROMISTA') {
+    if (winner === 'BROMISTA') {
       soundManager.speak(`¡El Bromista ${jesterPlayer?.name || ''} ha engañado a todos y gana la partida!`);
-    } else if (winnerTeam === 'TRIPULANTES') {
+    } else if (winner === 'TRIPULANTES') {
       soundManager.speak('¡Victoria de los Tripulantes! Han ganado la ronda.');
     } else {
       soundManager.speak(`¡El Infiltrado ${impostorPlayer.name} ha ganado la ronda!`);
@@ -51,19 +53,18 @@ export const GameOverPhase: React.FC<GameOverPhaseProps> = ({
 
     const duration = 2.5 * 1000;
     const end = Date.now() + duration;
-
     const frame = () => {
       confetti({ particleCount: 3, angle: 60, spread: 55, origin: { x: 0 } });
       confetti({ particleCount: 3, angle: 120, spread: 55, origin: { x: 1 } });
-      if (Date.now() < end) {
-        requestAnimationFrame(frame);
-      }
+      if (Date.now() < end) requestAnimationFrame(frame);
     };
     frame();
-  }, [winnerTeam]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sort players for tournament leaderboard
   const sortedLeaderboard = [...allPlayers].sort((a, b) => b.score - a.score);
+
+  // Winner mascot emoji (no broken img tags)
+  const winnerEmoji = winnerTeam === 'BROMISTA' ? '🃏' : winnerTeam === 'TRIPULANTES' ? '🧑‍🚀' : '🕵️';
 
   return (
     <div className="w-full max-w-xl mx-auto px-4 py-4 sm:py-6 flex flex-col gap-5 animate-in zoom-in-95 duration-300">
@@ -77,22 +78,12 @@ export const GameOverPhase: React.FC<GameOverPhaseProps> = ({
           : 'bg-gradient-to-br from-rose-600 via-red-700 to-indigo-950 border-red-400/40 shadow-red-600/20'
       }`}>
         
-        {/* Mascot Avatar */}
+        {/* Mascot Avatar — emoji, no broken images */}
         <div className="relative">
-          <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl overflow-hidden shadow-2xl border-4 border-white/80 bg-white/20">
-            {winnerTeam === 'BROMISTA' ? (
-              <div className="w-full h-full bg-amber-500 flex items-center justify-center text-5xl">
-                🃏
-              </div>
-            ) : (
-              <img
-                src={winnerTeam === 'TRIPULANTES' ? '/assets/crewmate.jpg' : '/assets/impostor.jpg'}
-                alt="Ganador"
-                className="w-full h-full object-cover"
-              />
-            )}
+          <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl bg-white/20 border-4 border-white/60 flex items-center justify-center text-6xl shadow-2xl">
+            {winnerEmoji}
           </div>
-          <div className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-amber-400 border-2 border-white flex items-center justify-center text-amber-900 font-bold shadow-md">
+          <div className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-amber-400 border-2 border-white flex items-center justify-center font-bold shadow-md">
             🏆
           </div>
         </div>
@@ -103,27 +94,27 @@ export const GameOverPhase: React.FC<GameOverPhaseProps> = ({
 
         <h2 className="text-2xl sm:text-3xl font-fun font-bold text-white tracking-wide">
           {winnerTeam === 'BROMISTA'
-            ? `¡VICTORIA DEL BROMISTA (${jesterPlayer?.name.toUpperCase()})!`
+            ? `¡GANA EL BROMISTA (${jesterPlayer?.name.toUpperCase()})!`
             : winnerTeam === 'TRIPULANTES'
-            ? '¡VICTORIA DE LOS TRIPULANTES!'
-            : `¡VICTORIA DE ${impostorPlayer.name.toUpperCase()}!`}
+            ? '¡GANAN LOS TRIPULANTES! 🎉'
+            : `¡GANA ${impostorPlayer.name.toUpperCase()}!`}
         </h2>
 
-        <p className="text-xs sm:text-sm text-white/90 font-medium max-w-sm">
+        <p className="text-sm text-white/90 font-medium max-w-sm">
           {winnerTeam === 'BROMISTA'
-            ? 'El Bromista logró engañar a la tripulación para que lo votaran a él y se roba la partida.'
+            ? 'El Bromista engañó a la tripulación para que lo votaran, ¡y se roba la partida!'
             : winnerTeam === 'TRIPULANTES'
             ? 'Los tripulantes descubrieron al impostor y protegieron la palabra secreta.'
-            : 'El impostor logró engañar a la tripulación o adivinó con éxito la palabra secreta.'}
+            : 'El impostor engañó a la tripulación o adivinó la palabra secreta.'}
         </p>
       </div>
 
       {/* Tournament Leaderboard Card */}
-      <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-6 border-2 border-amber-200/80 dark:border-slate-800 shadow-md shadow-amber-900/5 dark:shadow-none flex flex-col gap-3.5 transition-colors">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-6 border-2 border-amber-200/80 dark:border-slate-800 shadow-md flex flex-col gap-3.5 transition-colors">
         <div className="flex items-center justify-between">
           <h3 className="font-fun text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
             <Trophy className="w-5 h-5 text-amber-500" />
-            {totalTournamentRounds > 1 ? `Clasificación del Torneo (Ronda ${currentTournamentRound} de ${totalTournamentRounds})` : 'Puntuación de la Partida'}
+            {totalTournamentRounds > 1 ? `Torneo · Ronda ${currentTournamentRound} de ${totalTournamentRounds}` : 'Puntuación de la Partida'}
           </h3>
           {isTournamentOver && totalTournamentRounds > 1 && (
             <span className="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300">
@@ -132,7 +123,6 @@ export const GameOverPhase: React.FC<GameOverPhaseProps> = ({
           )}
         </div>
 
-        {/* Leaderboard rows */}
         <div className="flex flex-col gap-2">
           {sortedLeaderboard.map((p, rank) => {
             const emoji = AVATAR_EMOJIS[p.avatarIndex % AVATAR_EMOJIS.length];
@@ -155,11 +145,10 @@ export const GameOverPhase: React.FC<GameOverPhaseProps> = ({
                       {p.name}
                     </span>
                     <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                      Rol: {p.role === 'IMPOSTOR' ? '🕵️ Impostor' : p.role === 'UNDERCOVER' ? '🎭 Undercover' : p.role === 'BROMISTA' ? '🃏 Bromista' : '👨‍🚀 Tripulante'}
+                      {p.role === 'IMPOSTOR' ? '🕵️ Impostor' : p.role === 'UNDERCOVER' ? '🎭 Doble Agente' : p.role === 'BROMISTA' ? '🃏 Bromista' : '🧑‍🚀 Tripulante'}
                     </span>
                   </div>
                 </div>
-
                 <div className="flex items-center gap-2">
                   {p.roundScoreEarned ? (
                     <span className="text-xs font-bold px-2 py-0.5 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300">
@@ -195,7 +184,7 @@ export const GameOverPhase: React.FC<GameOverPhaseProps> = ({
 
           {undercoverWord && (
             <div className="bg-amber-50/60 dark:bg-slate-800/80 p-2.5 rounded-xl border border-amber-200/60 dark:border-slate-700">
-              <span className="text-slate-400 block text-[10px] uppercase font-bold">Palabra Undercover</span>
+              <span className="text-slate-400 block text-[10px] uppercase font-bold">Palabra Doble Agente</span>
               <span className="font-bold text-purple-700 dark:text-purple-400 text-sm">{undercoverWord}</span>
             </div>
           )}
@@ -222,10 +211,7 @@ export const GameOverPhase: React.FC<GameOverPhaseProps> = ({
       {/* Action Buttons */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
         <button
-          onClick={() => {
-            soundManager.playPop();
-            onPlayNextTournamentRound();
-          }}
+          onClick={() => { soundManager.playPop(); onPlayNextTournamentRound(); }}
           className="w-full py-4 rounded-2xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-fun font-bold text-base shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2 touch-press transition-all border-2 border-indigo-400/30"
         >
           <Play className="w-5 h-5 fill-current" />
@@ -233,10 +219,7 @@ export const GameOverPhase: React.FC<GameOverPhaseProps> = ({
         </button>
 
         <button
-          onClick={() => {
-            soundManager.playPop();
-            onNewGameSetup();
-          }}
+          onClick={() => { soundManager.playPop(); onNewGameSetup(); }}
           className="w-full py-4 rounded-2xl bg-white dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-fun font-bold text-base border-2 border-amber-300 dark:border-slate-700 shadow-sm flex items-center justify-center gap-2 touch-press transition-all"
         >
           <RotateCcw className="w-5 h-5" />
